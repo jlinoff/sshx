@@ -137,9 +137,6 @@ func sshClientConfig(opts options) (config *ssh.ClientConfig) {
                 }
         }
 
-        // This will not work if the following command fails.
-        // $ ssh -o PreferredAuthentications=password localhost pwd
-        // Permission denied (publickey,keyboard-interactive).
         config = &ssh.ClientConfig{
                 User: opts.Username,
         }
