@@ -7,6 +7,9 @@ don't forget them. It is not suitable for production.
 It demonstrates three types of authentication: password, keyboard-interactive
 and public-key.
 
+It also demonstrates how to set the HostKeyAlgorithms field in the ClientConfig
+and where to find the legal values (`ssh -Q key`).
+
 Any comments or suggestions to improve it or fix mistakes are greatly appreciated.
 
 ## Download and Build it
