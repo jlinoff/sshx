@@ -41,7 +41,8 @@ import (
 )
 
 //var version = "0.1" // initial release
-var version = "0.2" // Fixed the public-key handling, added vinfo and vinfon
+//var version = "0.2" // Fixed the public-key handling, added vinfo and vinfon
+var version = "0.3" // Added -A to support custom settings for HostKeyAlgorithms
 
 func main() {
 	// This is a hard-coded test of SSH.
@@ -90,6 +91,12 @@ func sshClientConfig(opts options) (config *ssh.ClientConfig) {
 		User: opts.Username,
 	}
 
+	// Use a custom set of host key algorithms if the user specified it.
+	if len(opts.HostKeyAlgorithms) > 0 {
+		as := strings.Join(opts.HostKeyAlgorithms, ",")
+		vinfo(opts, "updating host key algorithms: [ %v ]", as)
+		config.HostKeyAlgorithms = opts.HostKeyAlgorithms
+	}
 	// auth: public-key
 	// Get the public key, if it is available.
 	if opts.SSHPublicKey {

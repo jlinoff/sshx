@@ -40,6 +40,7 @@ type options struct {
 	SSHKeyboardInteractive bool
 	SSHPassword            bool
 	SSHPublicKey           bool
+	HostKeyAlgorithms      []string
 	Verbose                int
 }
 
@@ -64,6 +65,15 @@ func getopts() (opts options) {
 		switch opt {
 		case "-a", "--auth":
 			auth = nextArg(&i, opt)
+		case "-A", "--algorithms":
+			// Add a host key algorithm from the list provided by:
+			// ssh -Q key
+			alg := nextArg(&i, opt)
+			algs := strings.Split(alg, ",")
+			for _, a := range algs {
+				a = strings.TrimSpace(a)
+				opts.HostKeyAlgorithms = append(opts.HostKeyAlgorithms, a)
+			}
 		case "-h", "--help":
 			help()
 		case "-p", "--password":
@@ -177,6 +187,14 @@ OPTIONS
                        It is case-insenstive.
                        By default all modes are enabled.
 
+    -A ALGORITHMS, --algorithms ALGORITHMS
+                       Explicitly specify the the host key algorithms that you
+                       want to use in a comma separated list.
+                       Here is an example.
+                           -A id_rsa,id_dsa
+                       To see the host key algorithms available on your system
+                       run "ssh -Q key".
+
     -h, --help         This help message.
 
     -p STRING, --password STRING
@@ -212,8 +230,11 @@ EXAMPLES
     # Example 6: Only use password and keyboard-interactive mode.
     $ %[1]v -a password,keyboard-interactive host1 pwd
 
+    # Example 7: Specify a single host-key-algorithm.
+    $ %[1]v -A id_rsa host1 uptime
+
 VERSION
-        v%[2]v
+    v%[2]v
 `
 	f = "\n" + strings.TrimSpace(f) + "\n\n"
 	fmt.Printf(f, getProgramName(), version)
