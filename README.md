@@ -64,6 +64,14 @@ OPTIONS
                        It is case-insenstive.
                        By default all modes are enabled.
 
+    -A ALGORITHMS, --algorithms ALGORITHMS
+                       Explicitly specify the the host key algorithms that you
+                       want to use in a comma separated list.
+                       Here is an example.
+                           -A id_rsa,id_dsa
+                       To see the host key algorithms available on your system
+                       run "ssh -Q key".
+
     -h, --help         This help message.
 
     -p STRING, --password STRING
@@ -99,8 +107,11 @@ EXAMPLES
     # Example 6: Only use password and keyboard-interactive mode.
     $ sshx -a password,keyboard-interactive host1 pwd
 
+    # Example 7: Specify a single host-key-algorithm.
+    $ sshx -A id_rsa host1 uptime
+
 VERSION
-        v0.1
+    v0.3
 
 ```
 
