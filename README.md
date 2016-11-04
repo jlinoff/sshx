@@ -8,18 +8,30 @@ It demonstrates three types of authentication: password, keyboard-interactive
 and public-key.
 
 ## Download and Build it
+
+If you have make installed do this.
 ```bash
 $ git clone https://github.com/jlinoff/sshx.git
 $ cd sshx
+$ make
+```
+
+If you don't.
+```bash
+$ git clone https://github.com/jlinoff/sshx.git
+$ cd sshx
+$ GOPATH=$(pwd) go get golang.org/x/crypto/ssh
 $ GOPATH=$(pwd) go build -o $@ main.go getpassword.go
 ```
 
 ## Simple example
+Here is how you run a simple command.
 ```bash
 $ ./sshx host1 pwd
 ```
 
 ## Help
+Here is the program help.
 ```bash
 $ ./sshx -h
 
