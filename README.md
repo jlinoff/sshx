@@ -119,7 +119,7 @@ VERSION
 ```
 
 ## Auth Code
-This is the authorization code.
+This is the authorization configuration code.
 
 ```go
 // Create the ssh config structure for:
@@ -127,64 +127,97 @@ This is the authorization code.
 //    keyboard-interactive
 //    publickey
 func sshClientConfig(opts options) (config *ssh.ClientConfig) {
-	// Get the user's password.
-	password := ""
-	if opts.SSHPassword || opts.SSHKeyboardInteractive {
-		if len(opts.Password) == 0 {
-			password = getPassword(fmt.Sprintf("%v's password: ", opts.Username))
-		} else {
-			password = opts.Password
-		}
-	}
+        // Get the user's password.
+        password := ""
+        if opts.SSHPassword || opts.SSHKeyboardInteractive {
+                if len(opts.Password) == 0 {
+                        password = getPassword(fmt.Sprintf("%v's password: ", opts.Username))
+                } else {
+                        password = opts.Password
+                }
+        }
 
-	// This will not work if the following command fails.
-	// $ ssh -o PreferredAuthentications=password localhost pwd
-	// Permission denied (publickey,keyboard-interactive).
-	config = &ssh.ClientConfig{
-		User: opts.Username,
-	}
+        // This will not work if the following command fails.
+        // $ ssh -o PreferredAuthentications=password localhost pwd
+        // Permission denied (publickey,keyboard-interactive).
+        config = &ssh.ClientConfig{
+                User: opts.Username,
+        }
 
-	if opts.SSHPassword {
-		config.Auth = append(config.Auth, ssh.Password(password))
-	}
+        // Use a custom set of host key algorithms if the user specified it.
+        if len(opts.HostKeyAlgorithms) > 0 {
+                as := strings.Join(opts.HostKeyAlgorithms, ",")
+                vinfo(opts, "updating host key algorithms: [ %v ]", as)
+                config.HostKeyAlgorithms = opts.HostKeyAlgorithms
+        }
+        // auth: public-key
+        // Get the public key, if it is available.
+        if opts.SSHPublicKey {
+                vinfo(opts, "auth: public-key")
+                if userData, err1 := user.Lookup(opts.Username); err1 == nil {
+                        sshDir := path.Join(userData.HomeDir, ".ssh")
+                        if _, err2 := os.Stat(sshDir); err2 == nil {
+                                // The ~/.ssh directory exists look for id_ files that do
+                                // do not have the .pub extension. Add an auth entry for
+                                // each one.
+                                // Typically they will be things like id_rsa or id_ecdsa.
+                                files, _ := ioutil.ReadDir(sshDir)
+                                for _, f := range files {
+                                        fn := f.Name()
+                                        if strings.HasPrefix(fn, "id_") && strings.HasSuffix(fn, ".pub") == false {
+                                                keyFile := path.Join(sshDir, fn)
+                                                vinfo(opts, "   keyFile = %v", keyFile)
+                                                if key, err3 := ioutil.ReadFile(keyFile); err3 == nil {
+                                                        if signer, err4 := ssh.ParsePrivateKey(key); err4 == nil {
+                                                                config.Auth = append(config.Auth, ssh.PublicKeys(signer))
+                                                        } else {
+                                                                vinfo(opts, "%v", err4)
+                                                        }
+                                                } else {
+                                                        vinfo(opts, "%v", err3)
+                                                }
+                                        } else {
+                                                vinfon(opts, 2, "ignoring %v", fn)
+                                        }
+                                } // for loop
+                        } else {
+                                vinfo(opts, "%v", err1)
+                        }
+                }
+        }
 
-	if opts.SSHKeyboardInteractive {
-		// This will be called if SSH keyboard-interactive is enabled and
-		// password is disabled. Same as:
-		//    ssh -o PreferredAuthentications=password,keyboard-interactive
-		// See RFC-4252 for details of how the callbacks work.
-		kbic := func(
-			user,
-			instruction string,
-			questions []string,
-			echos []bool) (answers []string, err error) {
-			// Callback, will be called multiple times.
-			if len(questions) == 0 {
-				return []string{}, nil
-			}
-			if len(questions) == 1 {
-				return []string{password}, nil
-			}
-			panic(fmt.Errorf("ERROR: unexpected authentication chain"))
-		}
+        // auth: password
+        if opts.SSHPassword {
+                vinfo(opts, "auth: password")
+                config.Auth = append(config.Auth, ssh.Password(password))
+        }
 
-		config.Auth = append(config.Auth, ssh.KeyboardInteractive(kbic))
-	}
+        // auth: keyboard-interactive
+        if opts.SSHKeyboardInteractive {
+                vinfo(opts, "auth: keyboard-interactive")
 
-	// Get the public key, if it is available.
-	if opts.SSHPublicKey {
-		if userData, err := user.Lookup(opts.Username); err == nil {
-			idRsa := userData.HomeDir + "/.ssh/id_rsa"
-			if _, err := os.Stat(idRsa); err == nil {
-				if key, err := ioutil.ReadFile(idRsa); err == nil {
-					if signer, err := ssh.ParsePrivateKey(key); err == nil {
-						config.Auth = append(config.Auth, ssh.PublicKeys(signer))
-					}
-				}
-			}
-		}
-	}
+                // This will be called if SSH keyboard-interactive is enabled and
+                // password is disabled. Same as:
+                //    ssh -o PreferredAuthentications=password,keyboard-interactive
+                // See RFC-4252 for details of how the callbacks work.
+                kbic := func(
+                        user,
+                        instruction string,
+                        questions []string,
+                        echos []bool) (answers []string, err error) {
+                        // Callback, will be called multiple times.
+                        if len(questions) == 0 {
+                                return []string{}, nil
+                        }
+                        if len(questions) == 1 {
+                                return []string{password}, nil
+                        }
+                        panic(fmt.Errorf("ERROR: unexpected authentication chain"))
+                }
 
-	return
+                config.Auth = append(config.Auth, ssh.KeyboardInteractive(kbic))
+        }
+
+        return
 }
 ```
