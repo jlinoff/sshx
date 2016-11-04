@@ -112,14 +112,10 @@ func getopts() (opts options) {
 		}
 	}
 
-	if opts.Verbose > 0 {
-		fmt.Println("")
-		fmt.Printf("Cmd  : %v\n", opts.Command)
-		fmt.Printf("Host : %v\n", opts.Host)
-		fmt.Printf("User : %v\n", opts.Username)
-		fmt.Printf("Auth : %v\n", auth)
-		fmt.Println("")
-	}
+	vinfo(opts, "Cmd  = %v", opts.Command)
+	vinfo(opts, "Host = %v", opts.Host)
+	vinfo(opts, "User = %v", opts.Username)
+	vinfo(opts, "Auth = %v", auth)
 
 	return
 }

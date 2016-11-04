@@ -33,13 +33,15 @@ import (
 	"log"
 	"os"
 	"os/user"
+	"path"
 	"runtime"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
 )
 
-var version = "0.1"
+//var version = "0.1" // initial release
+var version = "0.2" // Fixed the public-key handling, added vinfo and vinfon
 
 func main() {
 	// This is a hard-coded test of SSH.
@@ -88,11 +90,52 @@ func sshClientConfig(opts options) (config *ssh.ClientConfig) {
 		User: opts.Username,
 	}
 
+	// auth: public-key
+	// Get the public key, if it is available.
+	if opts.SSHPublicKey {
+		vinfo(opts, "auth: public-key")
+		if userData, err1 := user.Lookup(opts.Username); err1 == nil {
+			sshDir := path.Join(userData.HomeDir, ".ssh")
+			if _, err2 := os.Stat(sshDir); err2 == nil {
+				// The ~/.ssh directory exists look for id_ files that do
+				// do not have the .pub extension. Add an auth entry for
+				// each one.
+				// Typically they will be things like id_rsa or id_ecdsa.
+				files, _ := ioutil.ReadDir(sshDir)
+				for _, f := range files {
+					fn := f.Name()
+					if strings.HasPrefix(fn, "id_") && strings.HasSuffix(fn, ".pub") == false {
+						keyFile := path.Join(sshDir, fn)
+						vinfo(opts, "   keyFile = %v", keyFile)
+						if key, err3 := ioutil.ReadFile(keyFile); err3 == nil {
+							if signer, err4 := ssh.ParsePrivateKey(key); err4 == nil {
+								config.Auth = append(config.Auth, ssh.PublicKeys(signer))
+							} else {
+								vinfo(opts, "%v", err4)
+							}
+						} else {
+							vinfo(opts, "%v", err3)
+						}
+					} else {
+						vinfon(opts, 2, "ignoring %v", fn)
+					}
+				} // for loop
+			} else {
+				vinfo(opts, "%v", err1)
+			}
+		}
+	}
+
+	// auth: password
 	if opts.SSHPassword {
+		vinfo(opts, "auth: password")
 		config.Auth = append(config.Auth, ssh.Password(password))
 	}
 
+	// auth: keyboard-interactive
 	if opts.SSHKeyboardInteractive {
+		vinfo(opts, "auth: keyboard-interactive")
+
 		// This will be called if SSH keyboard-interactive is enabled and
 		// password is disabled. Same as:
 		//    ssh -o PreferredAuthentications=password,keyboard-interactive
@@ -113,20 +156,6 @@ func sshClientConfig(opts options) (config *ssh.ClientConfig) {
 		}
 
 		config.Auth = append(config.Auth, ssh.KeyboardInteractive(kbic))
-	}
-
-	// Get the public key, if it is available.
-	if opts.SSHPublicKey {
-		if userData, err := user.Lookup(opts.Username); err == nil {
-			idRsa := userData.HomeDir + "/.ssh/id_rsa"
-			if _, err := os.Stat(idRsa); err == nil {
-				if key, err := ioutil.ReadFile(idRsa); err == nil {
-					if signer, err := ssh.ParsePrivateKey(key); err == nil {
-						config.Auth = append(config.Auth, ssh.PublicKeys(signer))
-					}
-				}
-			}
-		}
 	}
 
 	return
@@ -188,5 +217,23 @@ func check(e error) {
 	if e != nil {
 		_, _, lineno, _ := runtime.Caller(1)
 		log.Fatalf("ERROR:%v %v", lineno, e)
+	}
+}
+
+// Print an info message in verbose mode.
+func vinfo(opts options, f string, args ...interface{}) {
+	if opts.Verbose > 0 {
+		_, _, lineno, _ := runtime.Caller(1)
+		f1 := fmt.Sprintf("INFO::%04v %v", lineno, f)
+		log.Printf(f1, args...)
+	}
+}
+
+// Print an info message for a specific level of verbosity.
+func vinfon(opts options, level int, f string, args ...interface{}) {
+	if opts.Verbose >= level {
+		_, _, lineno, _ := runtime.Caller(1)
+		f1 := fmt.Sprintf("INFO::%04v %v", lineno, f)
+		log.Printf(f1, args...)
 	}
 }
