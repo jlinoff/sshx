@@ -10,6 +10,9 @@ and public-key.
 It also demonstrates how to set the HostKeyAlgorithms field in the ClientConfig
 and where to find the legal values (`ssh -Q key`).
 
+And, finally, it demonstrates how to implement a remote interactive terminal if
+no command is specified.
+
 Any comments or suggestions to improve it or fix mistakes are greatly appreciated.
 
 ## Download and Build it
@@ -52,6 +55,12 @@ DESCRIPTION
 
     It supports three types of authentication: password, keyboard-interactive
     and public-key.
+
+    It demonstrates how to set the HostKeyAlgorithms field in the
+    ssh.ClientConfig and where to find the legal values (ssh -Q key).
+
+    It also demonstrates how to start a remote interactive shell when no
+    command is specified.
 
     If the username is not specified, the username of the current user is used.
 
@@ -113,8 +122,14 @@ EXAMPLES
     # Example 7: Specify a single host-key-algorithm.
     $ sshx -A id_rsa host1 uptime
 
+    # Example 8: Start a remote shell.
+    $ sshx host2
+
+    # Example 9: Start a remote shell in verbose mode.
+    $ sshx -v host2
+
 VERSION
-    v0.3
+    v0.4
 
 ```
 
