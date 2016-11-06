@@ -173,6 +173,12 @@ DESCRIPTION
     It supports three types of authentication: password, keyboard-interactive
     and public-key.
 
+    It demonstrates how to set the HostKeyAlgorithms field in the
+    ssh.ClientConfig and where to find the legal values (ssh -Q key).
+
+    It also demonstrates how to start a remote interactive shell when no
+    command is specified.
+
     If the username is not specified, the username of the current user is used.
 
     If the port is not specified, port 22 is used.
@@ -232,6 +238,12 @@ EXAMPLES
 
     # Example 7: Specify a single host-key-algorithm.
     $ %[1]v -A id_rsa host1 uptime
+
+    # Example 8: Start a remote shell.
+    $ %[1]v host2
+
+    # Example 9: Start a remote shell in verbose mode.
+    $ %[1]v -v host2
 
 VERSION
     v%[2]v

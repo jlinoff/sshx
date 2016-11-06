@@ -42,14 +42,15 @@ import (
 
 //var version = "0.1" // initial release
 //var version = "0.2" // Fixed the public-key handling, added vinfo and vinfon
-var version = "0.3" // Added -A to support custom settings for HostKeyAlgorithms
+//var version = "0.3" // Added -A to support custom settings for HostKeyAlgorithms
+var version = "0.4" // Added support for a remote terminal
 
 func main() {
 	// This is a hard-coded test of SSH.
 	opts := getopts()
 	if len(os.Args) > 1 {
 		config := sshClientConfig(opts)
-		exec(opts.Command, opts.Host, config)
+		exec(opts.Command, opts.Host, config, opts)
 	}
 }
 
@@ -166,7 +167,7 @@ func sshClientConfig(opts options) (config *ssh.ClientConfig) {
 }
 
 // Execute the command.
-func exec(cmd string, addr string, config *ssh.ClientConfig) {
+func exec(cmd string, addr string, config *ssh.ClientConfig, opts options) {
 	// Create the connection.
 	conn, err := ssh.Dial("tcp", addr, config)
 	check(err)
@@ -174,9 +175,46 @@ func exec(cmd string, addr string, config *ssh.ClientConfig) {
 	check(err)
 	defer session.Close()
 
+	if len(cmd) == 0 {
+		// Start an xterm session.
+		execTerm(cmd, session, opts)
+	} else {
+		// Execute a command.
+		execCmd(cmd, session, opts)
+	}
+}
+
+// Execute an interactive terminal.
+func execTerm(md string, session *ssh.Session, opts options) {
+	vinfo(opts, "creating interactive terminal")
+	session.Stdin = os.Stdin
+	session.Stdout = os.Stdout
+	session.Stderr = os.Stderr
+
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 14400,
+		ssh.TTY_OP_OSPEED: 14400,
+	}
+	err := session.RequestPty("xterm", 80, 40, modes)
+	check(err)
+	err = session.Shell()
+	check(err)
+	vinfo(opts, "remote shell started")
+	err = session.Wait()
+	check(err)
+	vinfo(opts, "remote shell finished")
+}
+
+// Execute a commnand
+func execCmd(cmd string, session *ssh.Session, opts options) {
+	vinfo(opts, "executing command")
+
 	// Collect the output from stdout and stderr.
 	// The idea is to duplicate the shell IO redirection
-	// comment 2>&1 where both streams are interleaved.
+	// comment 2>&1 where both streams are interleaved but
+	// that doesn't work because each stream is handled
+	// independently.
 	stdoutPipe, err := session.StdoutPipe()
 	check(err)
 	stderrPipe, err := session.StderrPipe()
@@ -211,7 +249,6 @@ func exec(cmd string, addr string, config *ssh.ClientConfig) {
 			outputBuf += line + "\n"
 		}
 	}
-	session.Close()
 
 	// Output the data.
 	fmt.Print(outputBuf)
