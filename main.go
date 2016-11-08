@@ -65,13 +65,13 @@ func main() {
 	} else {
 		loadSSHConfig(opts)
 		// TODO: parallelize this in go routines.
-		d := make(chan hostinfo, len(opts.Hosts))
+		hiChan := make(chan hostinfo, len(opts.Hosts))
 		for _, hi := range opts.Hosts {
 			// Spawn the commands in parallel.
-			go execCmd(hi, opts, d)
+			go execCmd(hi, opts, hiChan)
 		}
 		for i := 0; i < len(opts.Hosts); i++ {
-			hi := <-d
+			hi := <-hiChan
 			if opts.JobHeader {
 				fmt.Printf(`
 # ================================================================
