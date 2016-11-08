@@ -138,6 +138,10 @@ OPTIONS
     -P FILE, -password-file FILE
                        Read the password from a password file.
 
+    -r NUM, --retries NUM
+                       The number of times to retry a TCP dial operation after
+                       a 200ms wait. The default is 10.
+
     -t SEC, --timeout SEC
                        Timeout after SEC seconds. The default is to never
                        timeout.
@@ -204,7 +208,7 @@ EXAMPLES
     $ sshx -t 10 +hosts-20.txt uptime
 
 VERSION
-    v0.7
+    v0.8
 
 ```
 
