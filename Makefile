@@ -9,3 +9,6 @@ preflight:
 help: sshx
 	./sshx -h
 
+test: sshx
+	@cd test; make
+
