@@ -58,6 +58,7 @@ type options struct {
 	JobHeader              bool
 	MaxParallelJobs        int
 	TimeoutSecs            int
+	NumRetries             int
 }
 
 // getopts - gets the command line options and populations the options
@@ -93,6 +94,7 @@ func getopts() (opts options) {
 
 	opts.JobHeader = true
 	opts.MaxParallelJobs = -1
+	opts.NumRetries = 10
 	auth := "keyboard-interactive,password,public-key"
 	i := 1
 	foundHosts := false
@@ -127,6 +129,8 @@ func getopts() (opts options) {
 			}
 			pf := nextArg(&i, opt)
 			opts.Password = readPasswordFromFile(pf)
+		case "r", "--retries":
+			opts.NumRetries = nextArgInt(&i, opt, 0, 100)
 		case "-t", "--timeout":
 			opts.TimeoutSecs = nextArgInt(&i, opt, 0, 1000000)
 		case "-v", "--verbose":
@@ -440,6 +444,10 @@ OPTIONS
 
     -P FILE, -password-file FILE
                        Read the password from a password file.
+
+    -r NUM, --retries NUM
+                       The number of times to retry a TCP dial operation after
+                       a 200ms wait. The default is 10.
 
     -t SEC, --timeout SEC
                        Timeout after SEC seconds. The default is to never

@@ -47,7 +47,8 @@ import (
 //var version = "0.4" // Added support for a remote terminal
 //var version = "0.5" // Add support for multiple hosts
 //var version = "0.6" // Add support for max jobs
-var version = "0.7" // Add support for timeout
+//var version = "0.7" // Add support for timeout
+var version = "0.8" // Add retries for the TCP dial operation
 
 func main() {
 	// This is a hard-coded test of SSH.
@@ -283,7 +284,7 @@ func execCmd(hi hostinfo, opts options, hiChan chan hostinfo) {
 	}
 
 	// Create the connection.
-	conn, err := ssh.Dial("tcp", hi.Host, hi.Config)
+	conn, err := tcpConnect(opts, hi)
 	cx(err)
 	session, err := conn.NewSession()
 	cx(err)
@@ -338,10 +339,7 @@ func execCmd(hi hostinfo, opts options, hiChan chan hostinfo) {
 func execTerm(opts options) {
 	vinfo(opts, "creating interactive terminal")
 
-	addr := opts.Hosts[0].Host
-	config := opts.Hosts[0].Config
-
-	conn, err := ssh.Dial("tcp", addr, config)
+	conn, err := tcpConnect(opts, opts.Hosts[0])
 	check(err)
 	session, err := conn.NewSession()
 	check(err)
@@ -365,6 +363,20 @@ func execTerm(opts options) {
 	err = session.Wait()
 	check(err)
 	vinfo(opts, "remote shell finished")
+}
+
+// tcpConnect
+func tcpConnect(opts options, hi hostinfo) (*ssh.Client, error) {
+	conn, err := ssh.Dial("tcp", hi.Host, hi.Config)
+	for r := 0; r < opts.NumRetries; r++ {
+		if err == nil {
+			break
+		}
+		vinfon(opts, 2, "retry %v", r+1)
+		time.Sleep(time.Duration(200) * time.Millisecond)
+		conn, err = ssh.Dial("tcp", hi.Host, hi.Config)
+	}
+	return conn, err
 }
 
 // Check for an error, if the error exists, repot it and exit.
