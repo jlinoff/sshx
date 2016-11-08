@@ -30,6 +30,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
@@ -55,6 +56,7 @@ type options struct {
 	HostKeyAlgorithms      []string
 	Verbose                int
 	JobHeader              bool
+	MaxParallelJobs        int
 }
 
 // getopts - gets the command line options and populations the options
@@ -71,7 +73,25 @@ func getopts() (opts options) {
 		return
 	}
 
+	// lambda to get a range in an interval
+	nextArgInt := func(idx *int, o string, min int, max int) (arg int) {
+		a := nextArg(idx, o)
+		arg = 0
+		if v, e := strconv.Atoi(a); e == nil {
+			if v < min {
+				log.Fatalf("ERROR: '%v' too small, minimum accepted value is %v", o, min)
+			} else if v > max {
+				log.Fatalf("ERROR: '%v' too large, maximum value accepted is %v", o, max)
+			}
+			arg = v
+		} else {
+			log.Fatalf("ERROR: '%v' expected a number in the range [%v..%v]", o, min, max)
+		}
+		return
+	}
+
 	opts.JobHeader = true
+	opts.MaxParallelJobs = -1
 	auth := "keyboard-interactive,password,public-key"
 	i := 1
 	foundHosts := false
@@ -91,6 +111,8 @@ func getopts() (opts options) {
 			}
 		case "-h", "--help":
 			help()
+		case "-j", "--max-jobs":
+			opts.MaxParallelJobs = nextArgInt(&i, opt, 0, 1000000)
 		case "-n", "--no-job-header":
 			opts.JobHeader = false
 		case "-p", "--password":
@@ -106,6 +128,8 @@ func getopts() (opts options) {
 			opts.Password = readPasswordFromFile(pf)
 		case "-v", "--verbose":
 			opts.Verbose++
+		case "-vv", "-vvv":
+			opts.Verbose += len(opt) - 1
 		case "-V", "--version":
 			fmt.Printf("%v v%v\n", getProgramName(), version)
 			os.Exit(0)
@@ -152,12 +176,22 @@ func getopts() (opts options) {
 		}
 	}
 
+	// Assume that we can have a channel per host/job unless told
+	// otherwise.
+	j := len(opts.Hosts)
+	if opts.MaxParallelJobs < 0 {
+		opts.MaxParallelJobs = j
+	} else if j < opts.MaxParallelJobs {
+		opts.MaxParallelJobs = j
+	}
+
 	// Output some information in verbose mode.
-	vinfo(opts, "Cmd   = %v", opts.Command)
-	vinfo(opts, "Auth  = %v", auth)
-	vinfo(opts, "Hosts = %v", len(opts.Hosts))
+	vinfo(opts, "Cmd      = %v", opts.Command)
+	vinfo(opts, "Max Jobs = %v", opts.MaxParallelJobs)
+	vinfo(opts, "Auth     = %v", auth)
+	vinfo(opts, "Hosts    = %v", len(opts.Hosts))
 	for i, hi := range opts.Hosts {
-		vinfo(opts, "        [%3d] %v %v %v %v", i+1, hi.ID, hi.Host, hi.Username, hi.HostFile)
+		vinfo(opts, "           [%3d] %v %v %v %v", i+1, hi.ID, hi.Host, hi.Username, hi.HostFile)
 	}
 
 	return
@@ -379,6 +413,11 @@ OPTIONS
 
     -h, --help         This help message.
 
+    -j NUM, --max-jobs NUM
+                       The maximum number of jobs that can be run concurrently.
+                       This option basically describes the width of the channel.
+                       The default is the number of hosts/jobs.
+
     -n, --no-job-header
                        Turns off the job header for each host. The job header
                        is printed to make it easier to differentiate between
@@ -396,6 +435,7 @@ OPTIONS
                        Read the password from a password file.
 
     -v, --verbose      Increase the level of verbosity.
+                       You can use -vv as shorthand to specify -v -v.
 
     -V, --version      Print the program version and exit.
 
@@ -445,6 +485,9 @@ EXAMPLES
     +other-hosts.txt
     EOF
     $ %[1]v +hosts.txt,host4 uname -r
+
+    # Example 12: Run a command on 20 hosts, limit concurrency to 10.
+    $ %[1]v -j 10 +hosts-20.txt uptime
 
 VERSION
     v%[2]v

@@ -44,7 +44,8 @@ import (
 //var version = "0.2" // Fixed the public-key handling, added vinfo and vinfon
 //var version = "0.3" // Added -A to support custom settings for HostKeyAlgorithms
 //var version = "0.4" // Added support for a remote terminal
-var version = "0.5" // Add support for multiple hosts
+//var version = "0.5" // Add support for multiple hosts
+var version = "0.6" // Add support for max jobs
 
 func main() {
 	// This is a hard-coded test of SSH.
@@ -64,27 +65,56 @@ func main() {
 		}
 	} else {
 		loadSSHConfig(opts)
-		// TODO: parallelize this in go routines.
-		hiChan := make(chan hostinfo, len(opts.Hosts))
-		for _, hi := range opts.Hosts {
-			// Spawn the commands in parallel.
-			go execCmd(hi, opts, hiChan)
+
+		hiChan := make(chan hostinfo, opts.MaxParallelJobs)
+
+		// lambda that acts at the channel sink
+		sink := func(m int, c chan hostinfo) {
+			for i := 0; i < m; i++ {
+				hi := <-c
+				if opts.JobHeader {
+					fmt.Printf(`
+  # ================================================================
+  # Job  : %[1]v
+  # User : %[2]v
+  # Host : %[3]v
+  # Cmd  : %[4]v
+  # Size : %[5]v
+  # ================================================================
+  %[6]v
+  `, hi.ID, hi.Username, hi.Host, opts.Command, len(hi.Output), hi.Output)
+				} else {
+					fmt.Print(hi.Output)
+				}
+			}
 		}
-		for i := 0; i < len(opts.Hosts); i++ {
-			hi := <-hiChan
-			if opts.JobHeader {
-				fmt.Printf(`
-# ================================================================
-# Job  : %[1]v
-# User : %[2]v
-# Host : %[3]v
-# Cmd  : %[4]v
-# Size : %[5]v
-# ================================================================
-%[6]v
-`, hi.ID, hi.Username, hi.Host, opts.Command, len(hi.Output), hi.Output)
+
+		// Spawn the commands in parallel.
+		// Honor the max parallel jobs setting.
+		for j, hi := range opts.Hosts {
+			vinfon(opts, 2, "spawning job %v", j)
+			go execCmd(hi, opts, hiChan) // source
+			if opts.MaxParallelJobs < 2 {
+				vinfon(opts, 2, "sinking 1 job")
+				sink(1, hiChan)
 			} else {
-				fmt.Print(hi.Output)
+				if j > 0 && (j%opts.MaxParallelJobs) == 0 {
+					vinfon(opts, 2, "sinking %v jobs", opts.MaxParallelJobs)
+					sink(opts.MaxParallelJobs, hiChan)
+				}
+			}
+		}
+
+		// Catch any left overs.
+		if opts.MaxParallelJobs > 1 {
+			unsunk := len(opts.Hosts) % opts.MaxParallelJobs
+			if unsunk == 0 {
+				unsunk = opts.MaxParallelJobs
+			}
+			vinfon(opts, 2, "checking for remaining unsunk channel elements %v", unsunk)
+			if unsunk > 0 {
+				vinfon(opts, 2, "final unsunk = %v", unsunk)
+				sink(unsunk, hiChan)
 			}
 		}
 	}
@@ -93,7 +123,7 @@ func main() {
 // load SSH configuration data.
 func loadSSHConfig(opts options) {
 	for i, hi := range opts.Hosts {
-		opts.Hosts[i].Config = sshClientConfig(hi.Username, hi.Password, hi.Host, opts)
+		opts.Hosts[i].Config = sshClientConfig(hi, opts)
 	}
 }
 
@@ -117,8 +147,12 @@ func prompt(p string, d string) (value string) {
 //    password
 //    keyboard-interactive
 //    publickey
-func sshClientConfig(username, password, host string, opts options) (config *ssh.ClientConfig) {
-	vinfo(opts, "configuring ssh for %v@%v", username, host)
+func sshClientConfig(hi hostinfo, opts options) (config *ssh.ClientConfig) {
+	vinfo(opts, "configuring ssh for [%v] %v@%v", hi.ID, hi.Username, hi.Host)
+
+	username := hi.Username
+	password := hi.Password
+	host := hi.Host
 
 	// Get the user's password.
 	if opts.SSHPassword || opts.SSHKeyboardInteractive {
@@ -136,14 +170,14 @@ func sshClientConfig(username, password, host string, opts options) (config *ssh
 	// Use a custom set of host key algorithms if the user specified it.
 	if len(opts.HostKeyAlgorithms) > 0 {
 		as := strings.Join(opts.HostKeyAlgorithms, ",")
-		vinfo(opts, "updating host key algorithms: [ %v ]", as)
+		vinfo(opts, "   updating host key algorithms: [ %v ]", as)
 		config.HostKeyAlgorithms = opts.HostKeyAlgorithms
 	}
 
 	// auth: public-key
 	// Get the public key, if it is available.
 	if opts.SSHPublicKey {
-		vinfo(opts, "auth: public-key")
+		vinfo(opts, "   auth: public-key")
 		if userData, err1 := user.Lookup(username); err1 == nil {
 			sshDir := path.Join(userData.HomeDir, ".ssh")
 			if _, err2 := os.Stat(sshDir); err2 == nil {
@@ -156,35 +190,35 @@ func sshClientConfig(username, password, host string, opts options) (config *ssh
 					fn := f.Name()
 					if strings.HasPrefix(fn, "id_") && strings.HasSuffix(fn, ".pub") == false {
 						keyFile := path.Join(sshDir, fn)
-						vinfo(opts, "   keyFile = %v", keyFile)
+						vinfo(opts, "      keyFile = %v", keyFile)
 						if key, err3 := ioutil.ReadFile(keyFile); err3 == nil {
 							if signer, err4 := ssh.ParsePrivateKey(key); err4 == nil {
 								config.Auth = append(config.Auth, ssh.PublicKeys(signer))
 							} else {
-								vinfo(opts, "%v", err4)
+								vinfo(opts, "         %v", err4)
 							}
 						} else {
-							vinfo(opts, "%v", err3)
+							vinfo(opts, "         %v", err3)
 						}
 					} else {
-						vinfon(opts, 2, "ignoring %v", fn)
+						vinfon(opts, 2, "      ignoring %v", fn)
 					}
 				} // for loop
 			} else {
-				vinfo(opts, "%v", err1)
+				vinfo(opts, "   %v", err1)
 			}
 		}
 	}
 
 	// auth: password
 	if opts.SSHPassword {
-		vinfo(opts, "auth: password")
+		vinfo(opts, "   auth: password")
 		config.Auth = append(config.Auth, ssh.Password(password))
 	}
 
 	// auth: keyboard-interactive
 	if opts.SSHKeyboardInteractive {
-		vinfo(opts, "auth: keyboard-interactive")
+		vinfo(opts, "   auth: keyboard-interactive")
 
 		// This will be called if SSH keyboard-interactive is enabled and
 		// password is disabled. Same as:
@@ -213,17 +247,30 @@ func sshClientConfig(username, password, host string, opts options) (config *ssh
 
 // Execute the command for all hosts.
 func execCmd(hi hostinfo, opts options, hiChan chan hostinfo) {
-	vinfo(opts, "executing command")
+	// lambda for handling goroutine errors
+	cx := func(err error) {
+		if err != nil {
+			if len(hi.Output) > 0 && hi.Output[len(hi.Output)-1] != '\n' {
+				hi.Output += "\n"
+			}
+			hi.Output += fmt.Sprintf("ERROR: %v", err)
+			hiChan <- hi
+			_, _, lineno, _ := runtime.Caller(1)
+			log.Fatalf("ERROR:%v %v", lineno, err)
+		}
+	}
+
+	vinfo(opts, "executing command on [%v] %v@%v", hi.ID, hi.Username, hi.Host)
 
 	if len(opts.Command) == 0 {
-		fatal("command cannot be zero length!")
+		cx(fmt.Errorf("ERROR: commmand cannot be zero length"))
 	}
 
 	// Create the connection.
 	conn, err := ssh.Dial("tcp", hi.Host, hi.Config)
-	check(err)
+	cx(err)
 	session, err := conn.NewSession()
-	check(err)
+	cx(err)
 	defer session.Close()
 
 	// Collect the output from stdout and stderr.
@@ -232,15 +279,15 @@ func execCmd(hi hostinfo, opts options, hiChan chan hostinfo) {
 	// that doesn't work because each stream is handled
 	// independently.
 	stdoutPipe, err := session.StdoutPipe()
-	check(err)
+	cx(err)
 	stderrPipe, err := session.StderrPipe()
-	check(err)
+	cx(err)
 	outputReader := io.MultiReader(stdoutPipe, stderrPipe)
 	outputScanner := bufio.NewScanner(outputReader)
 
 	// Start the session.
 	err = session.Start(opts.Command)
-	check(err)
+	cx(err)
 
 	// Capture the output asynchronously.
 	outputLine := make(chan string)
@@ -266,7 +313,6 @@ func execCmd(hi hostinfo, opts options, hiChan chan hostinfo) {
 		}
 	}
 
-	//fmt.Print(outputBuf)
 	hi.Output = outputBuf
 	hiChan <- hi
 }
