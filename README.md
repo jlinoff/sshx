@@ -2,7 +2,7 @@
 Go demo program that shows how to the ssh package with keyboard-interactive, password and public-key authentication on multiple hosts.
 
 It's only goal is to provide some examples of how things work so that I
-don't forget them. It is not suitable for production.
+don't forget them. It is probably not suitable for production.
 
 It demonstrates three types of authentication: password, keyboard-interactive
 and public-key.
@@ -27,7 +27,7 @@ $ cd sshx
 $ make
 ```
 
-If you don't.
+If you don't but you will need internet access.
 ```bash
 $ git clone https://github.com/jlinoff/sshx.git
 $ cd sshx
@@ -114,6 +114,14 @@ OPTIONS
 
     -h, --help         This help message.
 
+    -j NUM, --max-jobs NUM
+                       The maximum number of jobs that can be run concurrently.
+                       This option basically describes the width of the channel.
+                       The default is the number of hosts/jobs.
+                       If you specify 0 (unbuffered) or 1, then the jobs will
+                       complete in order but more slowly than they would if
+                       more parallelism were allowed.
+
     -n, --no-job-header
                        Turns off the job header for each host. The job header
                        is printed to make it easier to differentiate between
@@ -130,7 +138,12 @@ OPTIONS
     -P FILE, -password-file FILE
                        Read the password from a password file.
 
+    -t SEC, --timeout SEC
+                       Timeout after SEC seconds. The default is to never
+                       timeout.
+
     -v, --verbose      Increase the level of verbosity.
+                       You can use -vv as shorthand to specify -v -v.
 
     -V, --version      Print the program version and exit.
 
@@ -181,8 +194,18 @@ EXAMPLES
     EOF
     $ sshx +hosts.txt,host4 uname -r
 
+    # Example 12: Run a command on 20 hosts, limit concurrency to 10.
+    $ sshx -j 10 +hosts-20.txt uptime
+
+    # Example 13: Timeout after 30 seconds for a single host running interactively.
+    $ sshx -t 30 host1
+
+    # Example 14: Timeout after 10 seconds for a group of hosts.
+    $ sshx -t 10 +hosts-20.txt uptime
+
 VERSION
-    v0.5
+    v0.7
+
 ```
 
 ## Auth Code
