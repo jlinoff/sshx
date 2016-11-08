@@ -35,6 +35,38 @@ $ GOPATH=$(pwd) go get golang.org/x/crypto/ssh
 $ GOPATH=$(pwd) go build -o $@ main.go getpassword.go
 ```
 
+This program has been built and tested on Mac OS X 10.11.6 and CentOS 7.2 using go 1.7.3.
+
+If you a create a test/passfile with the current password, then you can run the tests
+like this. All of the tests run against localhost show they should work anywhere.
+
+```bash
+$ touch test/passfile
+$ chmod 0600 test/passfile
+$ edit test/passfile  # current user password
+$ make test
+GOPATH=$(pwd) go get golang.org/x/crypto/ssh
+GOPATH=$(pwd) go build -o sshx main.go getpassword.go options.go
+../sshx -j  0 -vv -P passfile +test-hosts.txt uname -a        15 real	0m7.384s user	0m0.044s sys	0m0.039s 
+../sshx -j  1 -vv -P passfile +test-hosts.txt uname -a        15 real	0m7.338s user	0m0.054s sys	0m0.046s 
+../sshx -j  2 -vv -P passfile +test-hosts.txt uname -a        15 real	0m3.884s user	0m0.055s sys	0m0.047s 
+../sshx -j  3 -vv -P passfile +test-hosts.txt uname -a        15 real	0m3.268s user	0m0.061s sys	0m0.046s 
+../sshx -j  4 -vv -P passfile +test-hosts.txt uname -a        15 real	0m2.743s user	0m0.060s sys	0m0.046s 
+../sshx -j  5 -vv -P passfile +test-hosts.txt uname -a        15 real	0m2.392s user	0m0.059s sys	0m0.043s 
+../sshx -j  6 -vv -P passfile +test-hosts.txt uname -a        15 real	0m2.288s user	0m0.057s sys	0m0.043s 
+../sshx -j  7 -vv -P passfile +test-hosts.txt uname -a        15 real	0m2.357s user	0m0.059s sys	0m0.043s 
+../sshx -j  8 -vv -P passfile +test-hosts.txt uname -a        15 real	0m2.612s user	0m0.060s sys	0m0.045s 
+../sshx -j  9 -vv -P passfile +test-hosts.txt uname -a        15 real	0m2.619s user	0m0.060s sys	0m0.043s 
+../sshx -j 10 -vv -P passfile +test-hosts.txt uname -a        15 real	0m3.127s user	0m0.060s sys	0m0.047s 
+../sshx -j 11 -vv -P passfile +test-hosts.txt uname -a        15 real	0m2.341s user	0m0.059s sys	0m0.043s 
+../sshx -j 12 -vv -P passfile +test-hosts.txt uname -a        15 real	0m3.273s user	0m0.059s sys	0m0.043s 
+../sshx -j 13 -vv -P passfile +test-hosts.txt uname -a        15 real	0m2.376s user	0m0.058s sys	0m0.042s 
+../sshx -j 14 -vv -P passfile +test-hosts.txt uname -a        15 real	0m1.653s user	0m0.058s sys	0m0.049s 
+../sshx -j 15 -vv -P passfile +test-hosts.txt uname -a        15 real	0m2.076s user	0m0.057s sys	0m0.042s 
+../sshx -j 16 -vv -P passfile +test-hosts.txt uname -a        15 real	0m1.572s user	0m0.059s sys	0m0.042s 
+$ rm test/passfile  # no need to keep it
+```
+
 ## Simple examples
 Here is how you run a simple command.
 ```bash
