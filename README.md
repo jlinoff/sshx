@@ -1,5 +1,5 @@
 # sshx
-Go demo program that shows how to the ssh package with keyboard-interactive, password and public-key authentication on multiple hosts.
+Go demo program that shows how to use the ssh package with keyboard-interactive, password and public-key authentication on multiple hosts.
 
 It's only goal is to provide some examples of how things work so that I
 don't forget them. It is probably not suitable for production.
