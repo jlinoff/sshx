@@ -7,11 +7,14 @@ don't forget them. It is not suitable for production.
 It demonstrates three types of authentication: password, keyboard-interactive
 and public-key.
 
-It also demonstrates how to set the HostKeyAlgorithms field in the ClientConfig
+It demonstrates how to set the HostKeyAlgorithms field in the ClientConfig
 and where to find the legal values (`ssh -Q key`).
 
-And, finally, it demonstrates how to implement a remote interactive terminal if
-no command is specified.
+It demonstrates how to implement a remote interactive terminal if
+no command is specified and a single host is specified.
+
+It demonstrates how to run the command on multiple hosts concurrently and
+capture the output.
 
 Any comments or suggestions to improve it or fix mistakes are greatly appreciated.
 
@@ -32,10 +35,15 @@ $ GOPATH=$(pwd) go get golang.org/x/crypto/ssh
 $ GOPATH=$(pwd) go build -o $@ main.go getpassword.go
 ```
 
-## Simple example
+## Simple examples
 Here is how you run a simple command.
 ```bash
 $ ./sshx host1 pwd
+```
+
+Here is another one that shows how to run a command on multiple hosts.
+```bash
+./sshx host1,host2 uname -a
 ```
 
 ## Help
@@ -44,11 +52,27 @@ Here is the program help.
 $ ./sshx -h
 
 USAGE
-    sshx [OPTIONS] [<username>@]<host>[:<port>] <cmd>
+    sshx [OPTIONS] <host-spec>[,<host-spec>] <cmd>
+
+    Where <host-spec>:
+
+        [<username>[:<password>]@]<host>[:<port>]
+          ^           ^            ^       ^
+          |           |            |       +-- optional, port, defaults to 22
+          |           |            +---------- required, host name or IP addr
+          |           +----------------------- optional, password - commas not
+          |                                              allowed, will use -p
+          |                                              if not specified
+          +----------------------------------- optional, username, def LOGNAME
+
+        +<host-file>
+          ^
+          +-------- file that contains host specifications or references to
+                    other hosts
 
 DESCRIPTION
     Demonstration program that shows how to use the go ssh package to execute
-    a command on a remote host using the SSH protocol.
+    a command on one or more remote hosts using the SSH protocol.
 
     It's only goal is to provide some examples of how things work so that I
     don't forget them. It is not suitable for production.
@@ -65,6 +89,10 @@ DESCRIPTION
     If the username is not specified, the username of the current user is used.
 
     If the port is not specified, port 22 is used.
+
+    The host files referenced in the USAGE section are text files with one host
+    or host-file reference per line. Lines whose first non-whitespace character
+    are '#' are ignored. Blank lines are ignored.
 
 OPTIONS
     -a MODES, --auth MODES
@@ -86,6 +114,11 @@ OPTIONS
 
     -h, --help         This help message.
 
+    -n, --no-job-header
+                       Turns off the job header for each host. The job header
+                       is printed to make it easier to differentiate between
+                       the output from different hosts.
+
     -p STRING, --password STRING
                        Define the password for password and keyboard-interactive
                        authorization operations.
@@ -93,6 +126,9 @@ OPTIONS
                        in your history file. Go ahead and use it in a 0755
                        shell script.
                        If the password is not specified, you will be prompted.
+
+    -P FILE, -password-file FILE
+                       Read the password from a password file.
 
     -v, --verbose      Increase the level of verbosity.
 
@@ -128,9 +164,25 @@ EXAMPLES
     # Example 9: Start a remote shell in verbose mode.
     $ sshx -v host2
 
-VERSION
-    v0.4
+    # Example 10: Run a command on multiple hosts.
+    $ sshx host1,host2,host3 /bin/bash -c "echo && hostname && date && uptime"
 
+    # Example 11: Run a command on multiple hosts using a host file.
+    #             The equals sign designates a file rather than a host.
+    #             Can have as many files and hosts as you like, intermixed.
+    $ cat >hosts.txt <<EOF
+    ### My hosts file.
+    host1
+    host2:22
+    me@host3:22
+
+    # include another file
+    +other-hosts.txt
+    EOF
+    $ sshx +hosts.txt,host4 uname -r
+
+VERSION
+    v0.5
 ```
 
 ## Auth Code
