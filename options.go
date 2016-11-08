@@ -57,6 +57,7 @@ type options struct {
 	Verbose                int
 	JobHeader              bool
 	MaxParallelJobs        int
+	TimeoutSecs            int
 }
 
 // getopts - gets the command line options and populations the options
@@ -126,6 +127,8 @@ func getopts() (opts options) {
 			}
 			pf := nextArg(&i, opt)
 			opts.Password = readPasswordFromFile(pf)
+		case "-t", "--timeout":
+			opts.TimeoutSecs = nextArgInt(&i, opt, 0, 1000000)
 		case "-v", "--verbose":
 			opts.Verbose++
 		case "-vv", "-vvv":
@@ -188,6 +191,7 @@ func getopts() (opts options) {
 	// Output some information in verbose mode.
 	vinfo(opts, "Cmd      = %v", opts.Command)
 	vinfo(opts, "Max Jobs = %v", opts.MaxParallelJobs)
+	vinfo(opts, "Timeout  = %v", opts.TimeoutSecs)
 	vinfo(opts, "Auth     = %v", auth)
 	vinfo(opts, "Hosts    = %v", len(opts.Hosts))
 	for i, hi := range opts.Hosts {
@@ -417,6 +421,9 @@ OPTIONS
                        The maximum number of jobs that can be run concurrently.
                        This option basically describes the width of the channel.
                        The default is the number of hosts/jobs.
+                       If you specify 0 (unbuffered) or 1, then the jobs will
+                       complete in order but more slowly than they would if
+                       more parallelism were allowed.
 
     -n, --no-job-header
                        Turns off the job header for each host. The job header
@@ -433,6 +440,10 @@ OPTIONS
 
     -P FILE, -password-file FILE
                        Read the password from a password file.
+
+    -t SEC, --timeout SEC
+                       Timeout after SEC seconds. The default is to never
+                       timeout.
 
     -v, --verbose      Increase the level of verbosity.
                        You can use -vv as shorthand to specify -v -v.
@@ -488,6 +499,12 @@ EXAMPLES
 
     # Example 12: Run a command on 20 hosts, limit concurrency to 10.
     $ %[1]v -j 10 +hosts-20.txt uptime
+
+    # Example 13: Timeout after 30 seconds for a single host running interactively.
+    $ %[1]v -t 30 host1
+
+    # Example 14: Timeout after 10 seconds for a group of hosts.
+    $ %[1]v -t 10 +hosts-20.txt uptime
 
 VERSION
     v%[2]v

@@ -36,6 +36,7 @@ import (
 	"path"
 	"runtime"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -45,13 +46,23 @@ import (
 //var version = "0.3" // Added -A to support custom settings for HostKeyAlgorithms
 //var version = "0.4" // Added support for a remote terminal
 //var version = "0.5" // Add support for multiple hosts
-var version = "0.6" // Add support for max jobs
+//var version = "0.6" // Add support for max jobs
+var version = "0.7" // Add support for timeout
 
 func main() {
 	// This is a hard-coded test of SSH.
 	opts := getopts()
 	if len(opts.Hosts) == 0 {
 		os.Exit(0)
+	}
+
+	// Setup a goroutine to timeout if the user requested it.
+	if opts.TimeoutSecs > 0 {
+		go func(s int) {
+			time.Sleep(time.Duration(s) * time.Second)
+			fatal("timed out after %v seconds", s)
+			os.Exit(1)
+		}(opts.TimeoutSecs)
 	}
 
 	// Check for the case of no-command, that implies a remote terminal for
@@ -64,59 +75,7 @@ func main() {
 			fatal("cannot spawn remote shells on multiple hosts")
 		}
 	} else {
-		loadSSHConfig(opts)
-
-		hiChan := make(chan hostinfo, opts.MaxParallelJobs)
-
-		// lambda that acts at the channel sink
-		sink := func(m int, c chan hostinfo) {
-			for i := 0; i < m; i++ {
-				hi := <-c
-				if opts.JobHeader {
-					fmt.Printf(`
-  # ================================================================
-  # Job  : %[1]v
-  # User : %[2]v
-  # Host : %[3]v
-  # Cmd  : %[4]v
-  # Size : %[5]v
-  # ================================================================
-  %[6]v
-  `, hi.ID, hi.Username, hi.Host, opts.Command, len(hi.Output), hi.Output)
-				} else {
-					fmt.Print(hi.Output)
-				}
-			}
-		}
-
-		// Spawn the commands in parallel.
-		// Honor the max parallel jobs setting.
-		for j, hi := range opts.Hosts {
-			vinfon(opts, 2, "spawning job %v", j)
-			go execCmd(hi, opts, hiChan) // source
-			if opts.MaxParallelJobs < 2 {
-				vinfon(opts, 2, "sinking 1 job")
-				sink(1, hiChan)
-			} else {
-				if j > 0 && (j%opts.MaxParallelJobs) == 0 {
-					vinfon(opts, 2, "sinking %v jobs", opts.MaxParallelJobs)
-					sink(opts.MaxParallelJobs, hiChan)
-				}
-			}
-		}
-
-		// Catch any left overs.
-		if opts.MaxParallelJobs > 1 {
-			unsunk := len(opts.Hosts) % opts.MaxParallelJobs
-			if unsunk == 0 {
-				unsunk = opts.MaxParallelJobs
-			}
-			vinfon(opts, 2, "checking for remaining unsunk channel elements %v", unsunk)
-			if unsunk > 0 {
-				vinfon(opts, 2, "final unsunk = %v", unsunk)
-				sink(unsunk, hiChan)
-			}
-		}
+		execCmdsInParallel(opts)
 	}
 }
 
@@ -243,6 +202,63 @@ func sshClientConfig(hi hostinfo, opts options) (config *ssh.ClientConfig) {
 	}
 
 	return
+}
+
+// Execute the commands in parallel.
+func execCmdsInParallel(opts options) {
+	loadSSHConfig(opts)
+
+	hiChan := make(chan hostinfo, opts.MaxParallelJobs)
+
+	// lambda that acts at the channel sink
+	sink := func(m int, c chan hostinfo) {
+		for i := 0; i < m; i++ {
+			hi := <-c
+			if opts.JobHeader {
+				fmt.Printf(`
+# ================================================================
+# Job  : %[1]v
+# User : %[2]v
+# Host : %[3]v
+# Cmd  : %[4]v
+# Size : %[5]v
+# ================================================================
+%[6]v
+`, hi.ID, hi.Username, hi.Host, opts.Command, len(hi.Output), hi.Output)
+			} else {
+				fmt.Print(hi.Output)
+			}
+		}
+	}
+
+	// Spawn the commands in parallel.
+	// Honor the max parallel jobs setting.
+	for j, hi := range opts.Hosts {
+		vinfon(opts, 2, "spawning job %v", j)
+		go execCmd(hi, opts, hiChan) // source
+		if opts.MaxParallelJobs < 2 {
+			vinfon(opts, 2, "sinking 1 job")
+			sink(1, hiChan)
+		} else {
+			if j > 0 && (j%opts.MaxParallelJobs) == 0 {
+				vinfon(opts, 2, "sinking %v jobs", opts.MaxParallelJobs)
+				sink(opts.MaxParallelJobs, hiChan)
+			}
+		}
+	}
+
+	// Catch any left overs.
+	if opts.MaxParallelJobs > 1 {
+		unsunk := len(opts.Hosts) % opts.MaxParallelJobs
+		if unsunk == 0 {
+			unsunk = opts.MaxParallelJobs
+		}
+		vinfon(opts, 2, "checking for remaining unsunk channel elements %v", unsunk)
+		if unsunk > 0 {
+			vinfon(opts, 2, "final unsunk = %v", unsunk)
+			sink(unsunk, hiChan)
+		}
+	}
 }
 
 // Execute the command for all hosts.
