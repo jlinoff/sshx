@@ -67,6 +67,8 @@ GOPATH=$(pwd) go build -o sshx main.go getpassword.go options.go
 $ rm test/passfile  # no need to keep it
 ```
 
+Note that performance improves as more parallelism is allowed (-j gets larger).
+
 ## Simple examples
 Here is how you run a simple command.
 ```bash
