@@ -43,14 +43,57 @@ import (
 //var version = "0.1" // initial release
 //var version = "0.2" // Fixed the public-key handling, added vinfo and vinfon
 //var version = "0.3" // Added -A to support custom settings for HostKeyAlgorithms
-var version = "0.4" // Added support for a remote terminal
+//var version = "0.4" // Added support for a remote terminal
+var version = "0.5" // Add support for multiple hosts
 
 func main() {
 	// This is a hard-coded test of SSH.
 	opts := getopts()
-	if len(os.Args) > 1 {
-		config := sshClientConfig(opts)
-		exec(opts.Command, opts.Host, config, opts)
+	if len(opts.Hosts) == 0 {
+		os.Exit(0)
+	}
+
+	// Check for the case of no-command, that implies a remote terminal for
+	// a single host.
+	if len(opts.Command) == 0 {
+		if len(opts.Hosts) == 1 {
+			loadSSHConfig(opts)
+			execTerm(opts)
+		} else {
+			fatal("cannot spawn remote shells on multiple hosts")
+		}
+	} else {
+		loadSSHConfig(opts)
+		// TODO: parallelize this in go routines.
+		d := make(chan hostinfo, len(opts.Hosts))
+		for _, hi := range opts.Hosts {
+			// Spawn the commands in parallel.
+			go execCmd(hi, opts, d)
+		}
+		for i := 0; i < len(opts.Hosts); i++ {
+			hi := <-d
+			if opts.JobHeader {
+				fmt.Printf(`
+# ================================================================
+# Job  : %[1]v
+# User : %[2]v
+# Host : %[3]v
+# Cmd  : %[4]v
+# Size : %[5]v
+# ================================================================
+%[6]v
+`, hi.ID, hi.Username, hi.Host, opts.Command, len(hi.Output), hi.Output)
+			} else {
+				fmt.Print(hi.Output)
+			}
+		}
+	}
+}
+
+// load SSH configuration data.
+func loadSSHConfig(opts options) {
+	for i, hi := range opts.Hosts {
+		opts.Hosts[i].Config = sshClientConfig(hi.Username, hi.Password, hi.Host, opts)
 	}
 }
 
@@ -74,19 +117,20 @@ func prompt(p string, d string) (value string) {
 //    password
 //    keyboard-interactive
 //    publickey
-func sshClientConfig(opts options) (config *ssh.ClientConfig) {
+func sshClientConfig(username, password, host string, opts options) (config *ssh.ClientConfig) {
+	vinfo(opts, "configuring ssh for %v@%v", username, host)
+
 	// Get the user's password.
-	password := ""
 	if opts.SSHPassword || opts.SSHKeyboardInteractive {
 		if len(opts.Password) == 0 {
-			password = getPassword(fmt.Sprintf("%v's password: ", opts.Username))
+			password = getPassword(fmt.Sprintf("%v@%v's password: ", username, host))
 		} else {
 			password = opts.Password
 		}
 	}
 
 	config = &ssh.ClientConfig{
-		User: opts.Username,
+		User: username,
 	}
 
 	// Use a custom set of host key algorithms if the user specified it.
@@ -95,11 +139,12 @@ func sshClientConfig(opts options) (config *ssh.ClientConfig) {
 		vinfo(opts, "updating host key algorithms: [ %v ]", as)
 		config.HostKeyAlgorithms = opts.HostKeyAlgorithms
 	}
+
 	// auth: public-key
 	// Get the public key, if it is available.
 	if opts.SSHPublicKey {
 		vinfo(opts, "auth: public-key")
-		if userData, err1 := user.Lookup(opts.Username); err1 == nil {
+		if userData, err1 := user.Lookup(username); err1 == nil {
 			sshDir := path.Join(userData.HomeDir, ".ssh")
 			if _, err2 := os.Stat(sshDir); err2 == nil {
 				// The ~/.ssh directory exists look for id_ files that do
@@ -166,49 +211,20 @@ func sshClientConfig(opts options) (config *ssh.ClientConfig) {
 	return
 }
 
-// Execute the command.
-func exec(cmd string, addr string, config *ssh.ClientConfig, opts options) {
+// Execute the command for all hosts.
+func execCmd(hi hostinfo, opts options, hiChan chan hostinfo) {
+	vinfo(opts, "executing command")
+
+	if len(opts.Command) == 0 {
+		fatal("command cannot be zero length!")
+	}
+
 	// Create the connection.
-	conn, err := ssh.Dial("tcp", addr, config)
+	conn, err := ssh.Dial("tcp", hi.Host, hi.Config)
 	check(err)
 	session, err := conn.NewSession()
 	check(err)
 	defer session.Close()
-
-	if len(cmd) == 0 {
-		// Start an xterm session.
-		execTerm(cmd, session, opts)
-	} else {
-		// Execute a command.
-		execCmd(cmd, session, opts)
-	}
-}
-
-// Execute an interactive terminal.
-func execTerm(md string, session *ssh.Session, opts options) {
-	vinfo(opts, "creating interactive terminal")
-	session.Stdin = os.Stdin
-	session.Stdout = os.Stdout
-	session.Stderr = os.Stderr
-
-	modes := ssh.TerminalModes{
-		ssh.ECHO:          1,
-		ssh.TTY_OP_ISPEED: 14400,
-		ssh.TTY_OP_OSPEED: 14400,
-	}
-	err := session.RequestPty("xterm", 80, 40, modes)
-	check(err)
-	err = session.Shell()
-	check(err)
-	vinfo(opts, "remote shell started")
-	err = session.Wait()
-	check(err)
-	vinfo(opts, "remote shell finished")
-}
-
-// Execute a commnand
-func execCmd(cmd string, session *ssh.Session, opts options) {
-	vinfo(opts, "executing command")
 
 	// Collect the output from stdout and stderr.
 	// The idea is to duplicate the shell IO redirection
@@ -223,7 +239,7 @@ func execCmd(cmd string, session *ssh.Session, opts options) {
 	outputScanner := bufio.NewScanner(outputReader)
 
 	// Start the session.
-	err = session.Start(cmd)
+	err = session.Start(opts.Command)
 	check(err)
 
 	// Capture the output asynchronously.
@@ -250,10 +266,46 @@ func execCmd(cmd string, session *ssh.Session, opts options) {
 		}
 	}
 
-	// Output the data.
-	fmt.Print(outputBuf)
+	//fmt.Print(outputBuf)
+	hi.Output = outputBuf
+	hiChan <- hi
 }
 
+// Execute an interactive terminal.
+// This only works for a single user.
+func execTerm(opts options) {
+	vinfo(opts, "creating interactive terminal")
+
+	addr := opts.Hosts[0].Host
+	config := opts.Hosts[0].Config
+
+	conn, err := ssh.Dial("tcp", addr, config)
+	check(err)
+	session, err := conn.NewSession()
+	check(err)
+	defer session.Close()
+
+	// Use the current terminal fds.
+	session.Stdin = os.Stdin
+	session.Stdout = os.Stdout
+	session.Stderr = os.Stderr
+
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 14400,
+		ssh.TTY_OP_OSPEED: 14400,
+	}
+	err = session.RequestPty("xterm", 80, 40, modes)
+	check(err)
+	err = session.Shell()
+	check(err)
+	vinfo(opts, "remote shell started")
+	err = session.Wait()
+	check(err)
+	vinfo(opts, "remote shell finished")
+}
+
+// Check for an error, if the error exists, repot it and exit.
 func check(e error) {
 	if e != nil {
 		_, _, lineno, _ := runtime.Caller(1)
@@ -261,11 +313,18 @@ func check(e error) {
 	}
 }
 
+// Print an error and exit.
+func fatal(f string, args ...interface{}) {
+	_, _, lineno, _ := runtime.Caller(1)
+	f1 := fmt.Sprintf("ERROR:%04v %v", lineno, f)
+	log.Fatalf(f1, args...)
+}
+
 // Print an info message in verbose mode.
 func vinfo(opts options, f string, args ...interface{}) {
 	if opts.Verbose > 0 {
 		_, _, lineno, _ := runtime.Caller(1)
-		f1 := fmt.Sprintf("INFO::%04v %v", lineno, f)
+		f1 := fmt.Sprintf("INFO:%04v %v", lineno, f)
 		log.Printf(f1, args...)
 	}
 }
@@ -274,7 +333,28 @@ func vinfo(opts options, f string, args ...interface{}) {
 func vinfon(opts options, level int, f string, args ...interface{}) {
 	if opts.Verbose >= level {
 		_, _, lineno, _ := runtime.Caller(1)
-		f1 := fmt.Sprintf("INFO::%04v %v", lineno, f)
+		f1 := fmt.Sprintf("INFO:%04v %v", lineno, f)
 		log.Printf(f1, args...)
 	}
+}
+
+// Info.
+func info(f string, args ...interface{}) {
+	_, _, lineno, _ := runtime.Caller(1)
+	f1 := fmt.Sprintf("INFO:%04v %v", lineno, f)
+	log.Printf(f1, args...)
+}
+
+// Warning.
+func warning(f string, args ...interface{}) {
+	_, _, lineno, _ := runtime.Caller(1)
+	f1 := fmt.Sprintf("WARNING:%04v %v", lineno, f)
+	log.Printf(f1, args...)
+}
+
+// Debug.
+func debug(f string, args ...interface{}) {
+	_, _, lineno, _ := runtime.Caller(1)
+	f1 := fmt.Sprintf("DEBUG:%04v %v", lineno, f)
+	log.Printf(f1, args...)
 }
