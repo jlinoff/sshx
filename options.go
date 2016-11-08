@@ -129,7 +129,7 @@ func getopts() (opts options) {
 			}
 			pf := nextArg(&i, opt)
 			opts.Password = readPasswordFromFile(pf)
-		case "r", "--retries":
+		case "-r", "--retries":
 			opts.NumRetries = nextArgInt(&i, opt, 0, 100)
 		case "-t", "--timeout":
 			opts.TimeoutSecs = nextArgInt(&i, opt, 0, 1000000)
@@ -195,6 +195,7 @@ func getopts() (opts options) {
 	// Output some information in verbose mode.
 	vinfo(opts, "Cmd      = %v", opts.Command)
 	vinfo(opts, "Max Jobs = %v", opts.MaxParallelJobs)
+	vinfo(opts, "Retries  = %v", opts.NumRetries)
 	vinfo(opts, "Timeout  = %v", opts.TimeoutSecs)
 	vinfo(opts, "Auth     = %v", auth)
 	vinfo(opts, "Hosts    = %v", len(opts.Hosts))
