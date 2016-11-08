@@ -80,6 +80,16 @@ Here is another one that shows how to run a command on multiple hosts.
 ./sshx host1,host2 uname -a
 ```
 
+Here is one more that shows how to run with an xterm interactive session.
+You need to exit the remote session explicitly.
+Use -v to see when the remote session starts (and stops).
+```basg
+$ ./sshx -v host1
+<cmds>
+exit
+$
+```
+
 ## Help
 Here is the program help.
 ```bash
