@@ -48,7 +48,8 @@ import (
 //var version = "0.5" // Add support for multiple hosts
 //var version = "0.6" // Add support for max jobs
 //var version = "0.7" // Add support for timeout
-var version = "0.8" // Add retries for the TCP dial operation
+//var version = "0.8" // Add retries for the TCP dial operation
+var version = "0.8.1" // Fix error recovery in goroutine
 
 func main() {
 	// This is a hard-coded test of SSH.
@@ -265,29 +266,35 @@ func execCmdsInParallel(opts options) {
 // Execute the command for all hosts.
 func execCmd(hi hostinfo, opts options, hiChan chan hostinfo) {
 	// lambda for handling goroutine errors
-	cx := func(err error) {
+	cx := func(err error) bool {
 		if err != nil {
 			if len(hi.Output) > 0 && hi.Output[len(hi.Output)-1] != '\n' {
 				hi.Output += "\n"
 			}
-			hi.Output += fmt.Sprintf("ERROR: %v", err)
-			hiChan <- hi
 			_, _, lineno, _ := runtime.Caller(1)
-			log.Fatalf("ERROR:%v %v", lineno, err)
+			hi.Output += fmt.Sprintf("ERROR:%v %v", lineno, err)
+			hiChan <- hi
+			return true
 		}
+		return false
 	}
 
 	vinfo(opts, "executing command on [%v] %v@%v", hi.ID, hi.Username, hi.Host)
 
 	if len(opts.Command) == 0 {
 		cx(fmt.Errorf("ERROR: commmand cannot be zero length"))
+		return
 	}
 
 	// Create the connection.
 	conn, err := tcpConnect(opts, hi)
-	cx(err)
+	if cx(err) {
+		return
+	}
 	session, err := conn.NewSession()
-	cx(err)
+	if cx(err) {
+		return
+	}
 	defer session.Close()
 
 	// Collect the output from stdout and stderr.
@@ -296,15 +303,21 @@ func execCmd(hi hostinfo, opts options, hiChan chan hostinfo) {
 	// that doesn't work because each stream is handled
 	// independently.
 	stdoutPipe, err := session.StdoutPipe()
-	cx(err)
+	if cx(err) {
+		return
+	}
 	stderrPipe, err := session.StderrPipe()
-	cx(err)
+	if cx(err) {
+		return
+	}
 	outputReader := io.MultiReader(stdoutPipe, stderrPipe)
 	outputScanner := bufio.NewScanner(outputReader)
 
 	// Start the session.
 	err = session.Start(opts.Command)
-	cx(err)
+	if cx(err) {
+		return
+	}
 
 	// Capture the output asynchronously.
 	outputLine := make(chan string)
@@ -372,7 +385,7 @@ func tcpConnect(opts options, hi hostinfo) (*ssh.Client, error) {
 		if err == nil {
 			break
 		}
-		vinfon(opts, 2, "retry %v", r+1)
+		vinfon(opts, 2, "retry %v %v %v@%v", r+1, hi.ID, hi.Username, hi.Host)
 		time.Sleep(time.Duration(200) * time.Millisecond)
 		conn, err = ssh.Dial("tcp", hi.Host, hi.Config)
 	}
