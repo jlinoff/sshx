@@ -1,5 +1,5 @@
 # sshx
-Go demo program that shows how to the ssh package with keyboard-interactive, password and public-key authentication on multiple hosts.
+Go demo program that shows how to use the ssh package with keyboard-interactive, password and public-key authentication on multiple hosts.
 
 It's only goal is to provide some examples of how things work so that I
 don't forget them. It is probably not suitable for production.
@@ -20,14 +20,14 @@ Any comments or suggestions to improve it or fix mistakes are greatly appreciate
 
 ## Download and Build it
 
-If you have make installed do this.
+If you have _make_ installed do this.
 ```bash
 $ git clone https://github.com/jlinoff/sshx.git
 $ cd sshx
 $ make
 ```
 
-If you don't but you will need internet access.
+If you don't, you can create it using _go_ but you will need internet access.
 ```bash
 $ git clone https://github.com/jlinoff/sshx.git
 $ cd sshx
