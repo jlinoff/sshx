@@ -20,14 +20,14 @@ Any comments or suggestions to improve it or fix mistakes are greatly appreciate
 
 ## Download and Build it
 
-If you have make installed do this.
+If you have _make_ installed do this.
 ```bash
 $ git clone https://github.com/jlinoff/sshx.git
 $ cd sshx
 $ make
 ```
 
-If you don't but you will need internet access.
+If you don't, you can create it using _go_ but you will need internet access.
 ```bash
 $ git clone https://github.com/jlinoff/sshx.git
 $ cd sshx
