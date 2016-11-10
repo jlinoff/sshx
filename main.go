@@ -272,7 +272,7 @@ func execCmd(hi hostinfo, opts options, hiChan chan hostinfo) {
 				hi.Output += "\n"
 			}
 			_, _, lineno, _ := runtime.Caller(1)
-			hi.Output += fmt.Sprintf("ERROR:%v %v\n", lineno, err)
+			hi.Output += fmt.Sprintf("ERROR:%v %v %v@%v - %v\n", lineno, hi.ID, hi.Username, hi.Host, err)
 			hiChan <- hi
 			return true
 		}
@@ -282,7 +282,8 @@ func execCmd(hi hostinfo, opts options, hiChan chan hostinfo) {
 	vinfo(opts, "executing command on [%v] %v@%v", hi.ID, hi.Username, hi.Host)
 
 	if len(opts.Command) == 0 {
-		cx(fmt.Errorf("ERROR: commmand cannot be zero length\n"))
+		_, _, lineno, _ := runtime.Caller(0)
+		cx(fmt.Errorf("ERROR:%v %v %v@%v - commmand cannot be zero length\n", lineno, hi.ID, hi.Username, hi.Host))
 		return
 	}
 
